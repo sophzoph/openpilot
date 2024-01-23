@@ -54,7 +54,7 @@ public:
   }
 
   void log(int levelnum, const char* filename, int lineno, const char* func, const char* msg, const std::string& log_s) {
-    std::lock_guard lk(lock);
+    std::lock_guard<std::mutex> lk(lock);
     if (levelnum >= print_level) {
       printf("%s: %s\n", filename, msg);
     }
