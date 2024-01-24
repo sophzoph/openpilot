@@ -9,7 +9,7 @@ from openpilot.common.params import Params
 import argparse
 import os
 
-# vEgo imports - check line 274 in the openpilot file for ex
+# check line 274 in the openpilot file for vEgo ex
 from selfdrive.locationd.calibrationd import *
 
 
@@ -60,6 +60,9 @@ class datastream:
         elapsed_time = current_time - start_time
         prev_vEgo_V = 0   # initialize the previous actual car speed to be 0
 
+        # define a sleep time (pause between iterations)
+        interval = 0.01  # loop will run every 10 ms
+
         while elapsed_time < end_time:   # should this be <=?
             
             """Refer to below for original proportional control"""
@@ -71,23 +74,54 @@ class datastream:
             # # clip to ensure the value in [-1, 1]
             # self.axis_values['gb'] = gas_brake  # set the gb to calculated p
 
+            """Must have at least 3 values in csv file for below equation to work"""
+            
+            # calculate equation vars
+            t1 = current_time - start_time  # curr time elapsed
+            t0 = t1 - interval   # prev time
+            t2 = t1 + interval  # next time (next iteration)
+            # calculate target V
+            Vt0 = self.get_target_speed(t0)  
+            Vt1 = self.get_target_speed(t1) 
+            Vt2 = self.get_target_speed(t2)
+
+            g0 = self.axis_values['gb']   # prev gas
+            Vr0 = prev_vEgo_V   # prev openpilot V
+
+            # uncoment the bottom two lines when i can actually get car speed from openpilot
+            # calibrator.v_ego = sm['carState'].vEgo
+            # Vr1 = calibrator.v_ego * 2.23694   # to convert from m/s to miles
+            Vr1 += 0.005
+            
+            prev_vEgo_V = Vr1  # store curr openpilot V for the next iteration
+
+            # solve equation for g1
+            # calculate the left side first
+            # g0 (t1 - t0) / (Vr1 - Vr0)
+            ls = (g0 * (t1 - t0)) / (Vr1 - Vr0)
+            ls *= (Vt2 - Vr1)
+            ls /= (t2 - t1)
+            g1 = ls   # ls result is gb value
+            if Vt1 < Vt0:   # if deacell then set a default brake for now
+                g1 = -0.2
+            self.axis_values['gb'] = g1
 
             # use equation (prev_gas(curr_time - prev_time)) / (curr_target_V - prev_vEgo_V) 
             # where curr refers to time at 1st second and prev refers to time at 0th second
-            prev_gas = self.axis_values['gb']
-            elapsed_time = current_time - start_time
-            prev_time = elapsed_time - 0.010   # where elasped time refers to curr time
-            curr_target_V = self.get_target_speed(elapsed_time)
+            # prev_gas = self.axis_values['gb']
+            # elapsed_time = current_time - start_time
+            # prev_time = elapsed_time - 0.010   # where elasped time refers to curr time
+            # curr_target_V = self.get_target_speed(elapsed_time)
             # prev_vEgo_V was calculated for the previous iteration
             
 
             # set gb to the newly calculated proportion
-            self.axis_values['gb'] = (prev_gas * (elapsed_time - prev_time)) / (curr_target_V - prev_vEgo_V)
-            print("AT TIME:", elapsed_time)
-            print("prev gas:", prev_gas)
-            print("time elapsed:", elapsed_time - prev_time)
+            # self.axis_values['gb'] = (prev_gas * (elapsed_time - prev_time)) / (curr_target_V - prev_vEgo_V)
+            print("AT TIME:", t1)
+            print("prev gas:", self.axis_values['gb'])
+            print("time elapsed:", t1 - t0)
             print("prev_vEgo_V:", prev_vEgo_V)
-            print("current target V:", curr_target_V)
+            print("current target V:", Vt1)
             
 
 
@@ -95,12 +129,12 @@ class datastream:
             # vEgo speed provided in m/s, convert it to miles
             # calibrator.v_ego = sm['carState'].vEgo
             # prev_vEgo_V = calibrator.v_ego * 2.23694
-            prev_vEgo_V += 0.0005
+            # prev_vEgo_V += 0.0005
 
             #gas_brake = clip(self.axis_values['gb'], -1, 1)  # with 0.1 being the tuning parameter
             # # clip to ensure the value in [-1, 1]
-            gas_brake = self.axis_values['gb']
-            self.axis_values['gb'] = gas_brake  # set the gb to calculated p
+            #gas_brake = self.axis_values['gb']
+            #self.axis_values['gb'] = gas_brake  # set the gb to calculated p
 
             # send control signals to Openpilot
             # messaging communicates info between different components of the system
@@ -110,10 +144,10 @@ class datastream:
             self.control_sock.send(dat.to_bytes())  # convert message to bytes and send it over messaging socket
 
 
-            print("target speed: ", curr_target_V, "---- actual gb: ", self.axis_values['gb'])
+            print("target speed: ", Vt1, "---- actual gb: ", self.axis_values['gb'])
             print()
 
-            time.sleep(0.01)  # adjustmnet occurs every 10ms, adjust if needed
+            time.sleep(interval)  # adjustmnet occurs every 10ms, adjust if needed
             current_time = time.time() 
 
 
