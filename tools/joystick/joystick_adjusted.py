@@ -22,7 +22,7 @@ class datastream:
         self.axis_values = {'gb':0., 'steer': 0.} 
         self.axes_order = ['gb', 'steer']
         self.csv_filepath = csv_filepath  
-        self.control_sock = messaging.pub_sock('testControl')
+        self.control_sock = messaging.pub_sock('testJoystick')
         self.time_list = []
         self.speed_list = []
         self.csv_data = self.read_csv_data()
@@ -52,11 +52,6 @@ class datastream:
         # return float(self.csv_data[-1]['speed'])
         return interp(elapsed_time, self.time_list, self.speed_list)  # interp return type should be a float
 
-    def control_speed(self, start_time):
-        """
-        Runs a while loop until the last time in the CSV file is reached. Uses Proportional controller 
-        """
-        # loop through the csv rows and update speed based on P controller
         # load csv data into a list of dictionaries
         # CSV could look like this
         # time,speed

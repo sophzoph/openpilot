@@ -58,16 +58,18 @@ class datastream:
         end_time = self.time_list[-1]
         current_time = time.time()
         elapsed_time = current_time - start_time
+        prev_vEgo_V = 0   # initialize the previous actual car speed to be 0
+
         while elapsed_time < end_time:   # should this be <=?
-
-            # Get the target speed based on the elapsed time from CSV data
-            target_speed = self.get_target_speed(elapsed_time)
-
-            # Proportional controller or other logic to adjust the speed (need to implement)
-            error = target_speed - self.axis_values['gb']   # need to get the actual GB value from openpilot for car
-            gas_brake = clip(self.axis_values['gb'] + error, -1, 1)  # with 0.1 being the tuning parameter
-            # clip to ensure the value in [-1, 1]
-            self.axis_values['gb'] = gas_brake  # set the gb to calculated p
+            
+            """Refer to below for original proportional control"""
+            # # Get the target speed based on the elapsed time from CSV data
+            # target_speed = self.get_target_speed(elapsed_time)
+            # # Proportional controller or other logic to adjust the speed (need to implement)
+            # error = target_speed - self.axis_values['gb']   # need to get the actual GB value from openpilot for car
+            # gas_brake = clip(self.axis_values['gb'] + error, -1, 1)  # with 0.1 being the tuning parameter
+            # # clip to ensure the value in [-1, 1]
+            # self.axis_values['gb'] = gas_brake  # set the gb to calculated p
 
 
             # use equation (prev_gas(curr_time - prev_time)) / (curr_target_V - prev_vEgo_V) 
@@ -76,12 +78,14 @@ class datastream:
             prev_time = elapsed_time - 1   # where elasped time refers to curr time
             curr_target_V = self.get_target_speed(elapsed_time)
             # prev_vEgo_V was calculated for the previous iteration
+            print("Curr target speed:", curr_target_V)
+            print("prev_vEgo_V:", prev_vEgo_V)
 
             # set gb to the newly calculated proportion
             self.axis_values['gb'] = (prev_gas * (elapsed_time - prev_time)) / (curr_target_V - prev_vEgo_V)
             
             # this calculation is used for the next iteration
-            calibrator.vEgo = sm['carState'].vEgo
+            calibrator.v_ego = sm['carState'].vEgo
             prev_vEgo_V = calibrator.v_ego
 
             # send control signals to Openpilot
@@ -92,11 +96,9 @@ class datastream:
             self.control_sock.send(dat.to_bytes())  # convert message to bytes and send it over messaging socket
 
 
-            print("target speed: ", target_speed, "---- actual gb: ", self.axis_values['gb'])
+            print("target speed: ", curr_target_V, "---- actual gb: ", self.axis_values['gb'])
             time.sleep(0.01)  # adjustmnet occurs every 10ms, adjust if needed
-            current_time = time.time()
-            elapsed_time = current_time - start_time
-
+            current_time = time.time() 
 
 
 if __name__ == '__main__':
