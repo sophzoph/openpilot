@@ -3,11 +3,16 @@ import csv
 import time
 import cereal.messaging as messaging
 from cereal.messaging import *
-from openpilot.common.realtime import Ratekeeper
+from openpilot.common.realtime import Ratekeeper   # not using this
 from openpilot.common.numpy_fast import interp, clip
 from openpilot.common.params import Params
 import argparse
 import os
+
+# to test this:
+# use print statements to see the changes in self.axes_values over time
+
+# how does this integrated with openpilo t system to update the car speed?
 
 
 class datastream:
@@ -17,13 +22,10 @@ class datastream:
         self.axis_values = {'gb':0., 'steer': 0.} 
         self.axes_order = ['gb', 'steer']
         self.csv_filepath = csv_filepath  
-        self.control_sock = messaging.pub_sock('testJoystick')
+        self.control_sock = messaging.pub_sock('testControl')
         self.time_list = []
         self.speed_list = []
         self.csv_data = self.read_csv_data()
-        
-        # subscribe to carState messages
-        sm = messaging.subMaster(['carState'])
 
 
     def read_csv_data(self):
@@ -49,16 +51,7 @@ class datastream:
         # If elapsed_time exceeds the data range, return the last speed (this case should not happen based on update_speed)
         # return float(self.csv_data[-1]['speed'])
         return interp(elapsed_time, self.time_list, self.speed_list)  # interp return type should be a float
-	
-	
-    def get_current_speed(self):
-    	sm.update()
-    	car_state_msg = sm['carState']
-    	# access vEgo field for estimate of speed
-    	current_speed = car_state_msg.vEgo
-  	return current_speed   # what is the return type of this
-  	
-    	
+
     def control_speed(self, start_time):
         """
         Runs a while loop until the last time in the CSV file is reached. Uses Proportional controller 
@@ -73,12 +66,11 @@ class datastream:
         # 3,15
         # 4,20
         # List of Dictionaries could look like this
-        # [{'time': 0, 'speed': 0}
-        # {'time': 1, 'speed': 5}
-        # {'time': 2, 'speed': 10}
-        # {'time': 3, 'speed': 15}
-        # {'time': 4, 'speed': 20}]
-
+        # [{'time': '0', 'speed': '0'}
+        # {'time': '1', 'speed': '5'}
+        # {'time': '2', 'speed': '10'}
+        # {'time': '3', 'speed': '15'}
+        # {'time': '4', 'speed': '20'}]
         # calculate elapsed time 
         end_time = self.time_list[-1]
         current_time = time.time()
@@ -88,15 +80,9 @@ class datastream:
 
             # Get the target speed based on the elapsed time from CSV data
             target_speed = self.get_target_speed(elapsed_time)
-            
-            
-            # access the car speed from openpilot cereal
-            car_state = messaging.recv_sock(carState)
-            current_speed = car_state.vEgo
 
             # Proportional controller or other logic to adjust the speed (need to implement)
-            #error = target_speed - self.axis_values['gb']   # need to get the actual GB value from openpilot for car
-            error = target_speed - current_speed
+            error = target_speed - self.axis_values['gb']   # need to get the actual GB value from openpilot for car
             gas_brake = clip(self.axis_values['gb'] + error, -1, 1)  # with 0.1 being the tuning parameter
             # clip means the value must be [-1, 1]
 
@@ -108,11 +94,6 @@ class datastream:
             dat.testJoystick.axes = [self.axis_values[a] for a in self.axes_order]  # put all values in axis_values into a list
             dat.testJoystick.buttons = [False]
             self.control_sock.send(dat.to_bytes())  # convert message to bytes and send it over messaging socket
-# to test this:
-# use print statements to see the changes in self.axes_values over time
-
-# how does this integrated with openpilo t system to update the car speed?
-
 
 
             # Check if elapsed time has exceeded the last time in the CSV, if so exit loop
@@ -146,8 +127,3 @@ if __name__ == '__main__':
 
     while True:
         ds.control_speed(start_time)
-
-
-
-
-    
