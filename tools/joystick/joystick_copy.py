@@ -114,7 +114,7 @@ if __name__ == '__main__':
     ds = datastream(csv_filepath = args.csv_file)
     start_time = time.time() 
     
-    #subMaster
+    # subscribe to get real-time info from openpilot
     sm = messaging.SubMaster(['cameraOdometry', 'carState', 'carParams'], poll=['cameraOdometry'])
     # create calibrator object to get vEgo
     calibrator = Calibrator(param_put=True)
