@@ -92,7 +92,7 @@ class datastream:
             # uncoment the bottom two lines when i can actually get car speed from openpilot
             # calibrator.v_ego = sm['carState'].vEgo
             # Vr1 = calibrator.v_ego * 2.23694   # to convert from m/s to miles
-            Vr1 += 0.05
+            Vr1 = Vr0 + 0.05
             
             prev_vEgo_V = Vr1  # store curr openpilot V for the next iteration
 
@@ -121,9 +121,15 @@ class datastream:
             # set gb to the newly calculated proportion
             # self.axis_values['gb'] = (prev_gas * (elapsed_time - prev_time)) / (curr_target_V - prev_vEgo_V)
             print("AT TIME:", t1)
-            print("prev gas:", self.axis_values['gb'])
-            print("time elapsed:", t1 - t0)
+            print("g0:", self.axis_values['gb'])
+            print("t1:", t1)
+            print("t0:", t0)
+            print("t2:", t2)
+            print("Vt2:", Vt2)
+            print("Vr0:", Vr0)
+            print("Vr1:", Vr1)
             print("prev_vEgo_V:", prev_vEgo_V)
+
             
 
 
