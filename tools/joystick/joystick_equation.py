@@ -25,6 +25,19 @@ class datastream:
         self.speed_list = []
         self.csv_data = self.read_csv_data()
 
+        # subscribe to get car real-time info
+        self.sm = messaging.SubMaster(['cameraOdometry', 'carState', 'carParams'], poll=['cameraOdometry'])
+        # create calibrator object here
+        self.calibrator = Calibrator(param_put=True)
+
+        # start time before communicating first car speed
+        self.start_time = time.time() 
+        # communicate the first speed to get the car moving
+        dat = messaging.new_message('testJoystick')
+        dat.testJoystick.axes = [self.axis_values[a] for a in self.axes_order]  # put all values in axis_values into a list
+        dat.testJoystick.buttons = [False]
+        self.control_sock.send(dat.to_bytes())  # convert message to bytes and send it over messaging socket
+
 
     def read_csv_data(self):
         """
@@ -37,7 +50,8 @@ class datastream:
             for row in reader:
                 data.append(row)
                 self.time_list.append(float(row['time']))
-                self.speed_list.append(float(row['speed']) / 2.236)  # convert from mph to m/s
+                # self.speed_list.append(float(row['speed']) / 2.236)  # convert from mph to m/s
+                self.speed_list.append(float(row['speed'])) 
         return data
 
 
@@ -58,10 +72,10 @@ class datastream:
         # calculate elapsed time 
         end_time = self.time_list[-1]
         current_time = time.time()
-        calibrator.v_ego = sm['carState'].vEgo
-        Vr1 = calibrator.v_ego * 2.23694
+        self.calibrator.v_ego = self.sm['carState'].vEgo
+        Vr1 = self.calibrator.v_ego * 2.23694
       
-        elapsed_time = current_time - start_time
+        elapsed_time = current_time - self.start_time
 
         # define a sleep time (pause between iterations)
         interval = 0.1  # loop will run every 10 ms
@@ -80,8 +94,6 @@ class datastream:
             # gas_brake = clip(self.axis_values['gb'] + error, -1, 1)  # with 0.1 being the tuning parameter
             # # clip to ensure the value in [-1, 1]
             # self.axis_values['gb'] = gas_brake  # set the gb to calculated p
-
-            """Must have at least 3 values in csv file for below equation to work"""
         
             # calculate equation vars
             t2 = t1 + interval  # next time (next iteration), interval is an approximation (assume calculatiosn and communication time is tiny)
@@ -131,9 +143,6 @@ class datastream:
             print("Vr0:", Vr0)
             print("Vr1:", Vr1)
 
-            
-
-
             # this calculation is used for the next iteration
             # vEgo speed provided in m/s, convert it to miles
             # calibrator.v_ego = sm['carState'].vEgo
@@ -153,15 +162,19 @@ class datastream:
             self.control_sock.send(dat.to_bytes())  # convert message to bytes and send it over messaging socket
 
 
-            print("target speed: ", Vt1, "---- gb: ", self.axis_values['gb'])
+
+            # calculate target speed here just to see if close
+            Vt1 = self.get_target_speed(t1)
+            print("target speed: ", Vt1, "---- current gb: ", self.axis_values['gb'])
             print("actual speed: ", Vr1)
             print()
 
             time.sleep(interval)  # adjustmnet occurs every 10ms, adjust if needed
 
+            # calculate values for next loop
             current_time = time.time()
-            calibrator.v_ego = sm['carState'].vEgo
-            Vr1 = calibrator.v_ego * 2.23694
+            self.calibrator.v_ego = self.sm['carState'].vEgo
+            Vr1 = self.calibrator.v_ego * 2.23694
           
             elapsed_time = current_time - start_time
             t0 = t1
@@ -176,6 +189,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Publishes events from your joystick to control your car.\n' +
                                                  'openpilot must be offroad before starting joysticked.',
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+
     parser.add_argument('--csv_file', help='CSV file containing time (s) and speed (mph)')
     args = parser.parse_args()
 
@@ -185,21 +199,17 @@ if __name__ == '__main__':
 
     # create the data stream object
     ds = datastream(csv_filepath = args.csv_file)
-    start_time = time.time() 
+    # start_time = time.time() 
 
-    # ocmmunicate
-    dat = messaging.new_message('testJoystick')
-    dat.testJoystick.axes = [self.axis_values[a] for a in self.axes_order]  # put all values in axis_values into a list
-    dat.testJoystick.buttons = [False]
-    self.control_sock.send(dat.to_bytes())  # convert message to bytes and send it over messaging socket
+    # communicate the first speed for car in the constructor
     
     # subscribe to get real-time info from openpilot
-    sm = messaging.SubMaster(['cameraOdometry', 'carState', 'carParams'], poll=['cameraOdometry'])
+    # sm = messaging.SubMaster(['cameraOdometry', 'carState', 'carParams'], poll=['cameraOdometry'])
     # create calibrator object to get vEgo
-    calibrator = Calibrator(param_put=True)
+    # calibrator = Calibrator(param_put=True)
     
     while True:
-        ds.control_speed(start_time)
+        ds.control_speed(ds.start_time)
 
 
 
