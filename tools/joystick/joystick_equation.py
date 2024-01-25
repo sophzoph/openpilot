@@ -30,13 +30,14 @@ class datastream:
         """
         Read CSV file data into a list of dictionaries for indexing
         """
+        # VERY IMPORTANT: NEED TO MAKE SURE THAT SPEEDS IN FILE ARE MPH
         data = []
         with open(self.csv_filepath, newline='') as csvfile:
             reader = csv.DictReader(csvfile)
             for row in reader:
                 data.append(row)
                 self.time_list.append(float(row['time']))
-                self.speed_list.append(float(row['speed']))
+                self.speed_list.append(float(row['speed']) / 2.236)  # convert from mph to m/s
         return data
 
 
@@ -61,7 +62,7 @@ class datastream:
         prev_vEgo_V = 0   # initialize the previous actual car speed to be 0
 
         # define a sleep time (pause between iterations)
-        interval = 0.01  # loop will run every 10 ms
+        interval = 0.1  # loop will run every 10 ms
 
         while elapsed_time < end_time:   # should this be <=?
             
@@ -81,8 +82,8 @@ class datastream:
             t0 = t1 - interval   # prev time
             t2 = t1 + interval  # next time (next iteration)
             # calculate target V
-            Vt0 = self.get_target_speed(t0)  
-            Vt1 = self.get_target_speed(t1) 
+            Vt0 = self.get_target_speed(t0)
+            Vt1 = self.get_target_speed(t1)
             Vt2 = self.get_target_speed(t2)
 
             g0 = self.axis_values['gb']   # prev gas
@@ -91,7 +92,7 @@ class datastream:
             # uncoment the bottom two lines when i can actually get car speed from openpilot
             # calibrator.v_ego = sm['carState'].vEgo
             # Vr1 = calibrator.v_ego * 2.23694   # to convert from m/s to miles
-            Vr1 += 0.005
+            Vr1 += 0.05
             
             prev_vEgo_V = Vr1  # store curr openpilot V for the next iteration
 
@@ -103,7 +104,9 @@ class datastream:
             ls /= (t2 - t1)
             g1 = ls   # ls result is gb value
             if Vt1 < Vt0:   # if deacell then set a default brake for now
-                g1 = -0.2
+                g1 = -0.3
+            if g1 > 1:
+                g1 = 1
             self.axis_values['gb'] = g1
 
             # use equation (prev_gas(curr_time - prev_time)) / (curr_target_V - prev_vEgo_V) 
@@ -121,7 +124,6 @@ class datastream:
             print("prev gas:", self.axis_values['gb'])
             print("time elapsed:", t1 - t0)
             print("prev_vEgo_V:", prev_vEgo_V)
-            print("current target V:", Vt1)
             
 
 
@@ -144,7 +146,8 @@ class datastream:
             self.control_sock.send(dat.to_bytes())  # convert message to bytes and send it over messaging socket
 
 
-            print("target speed: ", Vt1, "---- actual gb: ", self.axis_values['gb'])
+            print("target speed: ", Vt1, "---- gb: ", self.axis_values['gb'])
+            print("actual speed: ", Vr1)
             print()
 
             time.sleep(interval)  # adjustmnet occurs every 10ms, adjust if needed
