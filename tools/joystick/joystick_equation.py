@@ -17,7 +17,7 @@ class datastream:
     def __init__(self, csv_filepath):
         """Set default values for when datastream object is created. Incr / decr only set to 1%"""
         self.axis_increment = 0.01    # 1% incr / decr to adjusting speed
-        self.axis_values = {'gb':0.01, 'steer': 0.}   # initialize gb to a small value for later on proportional calculation
+        self.axis_values = {'gb':0.1, 'steer': 0.}   # initialize gb to a small value for later on proportional calculation
         self.axes_order = ['gb', 'steer']
         self.csv_filepath = csv_filepath  
         self.control_sock = messaging.pub_sock('testJoystick')
@@ -58,12 +58,18 @@ class datastream:
         # calculate elapsed time 
         end_time = self.time_list[-1]
         current_time = time.time()
+        calibrator.v_ego = sm['carState'].vEgo
+        Vr1 = calibrator.v_ego * 2.23694
+      
         elapsed_time = current_time - start_time
-        prev_vEgo_V = 0   # initialize the previous actual car speed to be 0
 
         # define a sleep time (pause between iterations)
         interval = 0.1  # loop will run every 10 ms
-
+        t0 = 0
+        Vr0 = 0
+        g0 = 0.1
+        t1 = elapsed_time
+   
         while elapsed_time < end_time:   # should this be <=?
             
             """Refer to below for original proportional control"""
@@ -76,37 +82,33 @@ class datastream:
             # self.axis_values['gb'] = gas_brake  # set the gb to calculated p
 
             """Must have at least 3 values in csv file for below equation to work"""
-            
+        
             # calculate equation vars
-            t1 = current_time - start_time  # curr time elapsed
-            t0 = t1 - interval   # prev time
-            t2 = t1 + interval  # next time (next iteration)
+            t2 = t1 + interval  # next time (next iteration), interval is an approximation (assume calculatiosn and communication time is tiny)
             # calculate target V
-            Vt0 = self.get_target_speed(t0)
-            Vt1 = self.get_target_speed(t1)
             Vt2 = self.get_target_speed(t2)
-
-            g0 = self.axis_values['gb']   # prev gas
-            Vr0 = prev_vEgo_V   # prev openpilot V
 
             # uncoment the bottom two lines when i can actually get car speed from openpilot
             # calibrator.v_ego = sm['carState'].vEgo
             # Vr1 = calibrator.v_ego * 2.23694   # to convert from m/s to miles
-            Vr1 = Vr0 + 0.07
+            # Vr1 = Vr0 + 0.07
             
             prev_vEgo_V = Vr1  # store curr openpilot V for the next iteration
 
             # solve equation for g1
-            # calculate the left side first
-            # g0 (t1 - t0) / (Vr1 - Vr0)
-            ls = (g0 * (t1 - t0)) / (Vr1 - Vr0)
-            ls *= (Vt2 - Vr1)
-            ls /= (t2 - t1)
-            g1 = ls   # ls result is gb value
-            if Vt1 < Vt0:   # if deacell then set a default brake for now
-                g1 = -0.3
+            if Vt2 == Vr1:
+                g1 = 0
+            elif Vr1 == Vr0:
+                g1 = 0.1  # deafult value in this case
+            else:
+                g1 = g0 * (t1 - t0) * (Vt2 - Vr1) / (Vr1 - Vr0) / interval
+              
             if g1 > 1:
                 g1 = 1
+            elif g1 < -1:
+                g1 = -1
+
+            
             self.axis_values['gb'] = g1
 
             # use equation (prev_gas(curr_time - prev_time)) / (curr_target_V - prev_vEgo_V) 
@@ -156,7 +158,18 @@ class datastream:
             print()
 
             time.sleep(interval)  # adjustmnet occurs every 10ms, adjust if needed
-            current_time = time.time() 
+
+            current_time = time.time()
+            calibrator.v_ego = sm['carState'].vEgo
+            Vr1 = calibrator.v_ego * 2.23694
+          
+            elapsed_time = current_time - start_time
+            t0 = t1
+            Vr0 = Vr1
+            g0 = g1
+            if g0 == 0:
+                g0 = 0.1
+            t1 = elapsed_time
 
 
 if __name__ == '__main__':
@@ -173,12 +186,18 @@ if __name__ == '__main__':
     # create the data stream object
     ds = datastream(csv_filepath = args.csv_file)
     start_time = time.time() 
+
+    # ocmmunicate
+    dat = messaging.new_message('testJoystick')
+    dat.testJoystick.axes = [self.axis_values[a] for a in self.axes_order]  # put all values in axis_values into a list
+    dat.testJoystick.buttons = [False]
+    self.control_sock.send(dat.to_bytes())  # convert message to bytes and send it over messaging socket
     
     # subscribe to get real-time info from openpilot
     sm = messaging.SubMaster(['cameraOdometry', 'carState', 'carParams'], poll=['cameraOdometry'])
     # create calibrator object to get vEgo
     calibrator = Calibrator(param_put=True)
-
+    
     while True:
         ds.control_speed(start_time)
 
